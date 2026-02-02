@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>WildSkunkBeta</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+body {
+  margin:0;
+  font-family:'Press Start 2P';
+  background:#000;
+  overflow:hidden;
+  touch-action:none;
+}
+#menu {
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  color:white;
+  background:linear-gradient(#1e3c72,#2a5298);
+  text-align:center;
+}
+#menu button {
+  padding:12px 24px;
+  border:4px solid white;
+  background:#00eaff;
+  font-family:'Press Start 2P';
+  cursor:pointer;
+  margin-top:20px;
+}
+#menu footer {
+  margin-top:20px;
+  font-size:10px;
+  opacity:.6;
+}
+
+/* HUD style rétro */
+#hud {
+  position:absolute;
+  width:100%;
+  bottom:10px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  color:white;
+  pointer-events:none;
+  display:none;
+}
+#hud .bar-container {
+  width:160px;
+  height:10px;
+  border:2px solid white;
+  margin:2px 0;
+  background:#222;
+}
+.fill {
+  height:100%;
+  width:100%;
+}
+#hp.fill {background:lime;}
+#xp.fill {background:cyan;}
+#objective {
+  position:absolute;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:12px;
+  color:white;
+}
+
+/* Joystick */
+.joy {
+  position:absolute;
+  width:90px;height:90px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.3);
+}
+.knob {
+  width:40px;height:40px;
+  border-radius:50%;
+  background:#00eaff;
+  position:absolute;left:25px;top:25px;
+}
+#move {bottom:20px;left:20px;}
+#attack {bottom:20px;right:20px;}
+#attack .knob {background:lime;}
+
+canvas {display:none;}
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>WildSkunkBeta</h1>
+  <button onclick="start()">JOUER</button>
+  <footer>a MR production</footer>
+</div>
+
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div class="bar-container"><div id="hp" class="fill"></div></div>
+  <div class="bar-container"><div id="xp" class="fill"></div></div>
+</div>
+<div id="objective">Objectif: Tuer 10 Champignas</div>
+
+<div id="move" class="joy"><div class="knob"></div></div>
+<div id="attack" class="joy"><div class="knob"></div></div>
+
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext("2d");
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+// --- GAME STATE ---
+let gameStage=1; // 1=foret, 2=ville
+let level=1, lastShot=0, kills=0;
+
+// --- MAP ---
+const MAP_WIDTH=2000;
+const MAP_HEIGHT=1200;
+const trees=[], mushrooms=[], enemies=[], shots=[];
+
+// --- PLAYER ---
+const player={x:MAP_WIDTH/2,y:MAP_HEIGHT/2,dx:0,dy:0,dirX:1,dirY:0,hp:100,xp:0,speed:3};
+
+// --- INIT MAP OBJECTS ---
+function initMap(){
+  trees.length=0; mushrooms.length=0;
+  for(let i=0;i<40;i++){
+    trees.push({x:Math.random()*MAP_WIDTH,y:Math.random()*MAP_HEIGHT});
+  }
+  for(let i=0;i<21;i++){ // 21 = +5% champignons
+    mushrooms.push({x:Math.random()*MAP_WIDTH,y:Math.random()*MAP_HEIGHT});
+  }
+}
+initMap();
+
+// --- SPAWN ENEMIES ---
+function spawnEnemy(){
+  enemies.push({x:Math.random()*(MAP_WIDTH-50)+25,y:Math.random()*(MAP_HEIGHT-50)+25,hp:3+level,flash:0});
+}
+for(let i=0;i<5;i++) spawnEnemy();
+
+// --- START ---
+function start(){
+  document.getElementById('menu').style.display="none";
+  canvas.style.display="block";
+  document.getElementById('hud').style.display="flex";
+  loop();
+}
+
+// --- MAP DRAW ---
+function drawMap(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const camX=Math.min(Math.max(player.x-canvas.width/2,0),MAP_WIDTH-canvas.width);
+  const camY=Math.min(Math.max(player.y-canvas.height/2,0),MAP_HEIGHT-canvas.height);
+
+  if(gameStage===1){
+    ctx.fillStyle="#0a260a"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    // arbres
+    ctx.fillStyle="brown";
+    trees.forEach(t=>{
+      const x=t.x-camX, y=t.y-camY;
+      if(x>=-20 && x<=canvas.width+20 && y>=-40 && y<=canvas.height+20){
+        ctx.fillRect(x-5,y-30,10,30);
+        ctx.fillStyle="green";
+        ctx.beginPath(); ctx.arc(x,y-35,15,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle="brown";
+      }
+    });
+    // champignons
+    ctx.fillStyle="purple";
+    mushrooms.forEach(m=>{
+      const x=m.x-camX, y=m.y-camY;
+      if(x>=-20 && x<=canvas.width+20 && y>=-20 && y<=canvas.height+20){
+        ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fill();
+      }
+    });
+  } else if(gameStage===2){
+    ctx.fillStyle="#555"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#333";
+    ctx.fillRect(100-camX,MAP_HEIGHT-200-camY,200,200);
+    ctx.fillRect(400-camX,MAP_HEIGHT-250-camY,200,250);
+  }
+  return {camX, camY};
+}
+
+// --- PLAYER DRAW ---
+function drawPlayer(camX,camY){
+  const px=player.x-camX, py=player.y-camY;
+  ctx.fillStyle="black";
+  ctx.beginPath();
+  ctx.ellipse(px,py,26,18,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="white";
+  ctx.fillRect(px+6,py-16,8,30);
+}
+
+// --- ENEMY DRAW ---
+function drawEnemy(e,camX,camY){
+  const ex=e.x-camX, ey=e.y-camY;
+  ctx.fillStyle=e.flash?"#fff":"purple";
+  ctx.beginPath(); ctx.arc(ex,ey,16,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="lime"; ctx.fillRect(ex-5,ey,10,16);
+}
+
+// --- SHOOT ---
+function shoot(){
+  const now=Date.now();
+  if(now-lastShot<200) return;
+  lastShot=now;
+  shots.push({x:player.x,y:player.y,vx:player.dirX*6,vy:player.dirY*6,life:25});
+}
+
+// --- UPDATE ---
+function update(){
+  // movement + limites map
+  player.x=Math.min(Math.max(player.x+player.dx*player.speed,0),MAP_WIDTH);
+  player.y=Math.min(Math.max(player.y+player.dy*player.speed,0),MAP_HEIGHT);
+
+  // shots
+  shots.forEach(s=>{s.x+=s.vx;s.y+=s.vy;s.life--;});
+
+  // ennemis suivent joueur
+  enemies.forEach(e=>{
+    const dx=player.x-e.x, dy=player.y-e.y;
+    const d=Math.hypot(dx,dy);
+    if(d>0){ e.x+=dx/d*0.5; e.y+=dy/d*0.5;}
+    if(d<24) player.hp-=0.1;
+  });
+
+  // collisions shots-ennemis avec spawn après boucle
+  let newEnemies = 0;
+  shots.forEach(s=>{
+    enemies.forEach(e=>{
+      if(Math.hypot(s.x-e.x,s.y-e.y)<18){
+        e.hp--; 
+        e.flash=5; 
+        s.life=0;
+        if(e.hp<=0 && gameStage===1 && !e.dead){
+          e.dead = true; // marque mort
+          kills++;
+          player.xp += 1;
+          newEnemies++;
+        }
+      }
+    });
+  });
+  for(let i=0;i<newEnemies;i++) spawnEnemy();
+
+  enemies.forEach(e=>{if(e.flash>0)e.flash--;});
+
+  for(let i=shots.length-1;i>=0;i--) if(shots[i].life<=0) shots.splice(i,1);
+  for(let i=enemies.length-1;i>=0;i--) if(enemies[i].dead) enemies.splice(i,1);
+
+  // HUD
+  document.getElementById('hp').style.width=Math.max(player.hp,0)+"%";
+  document.getElementById('xp').style.width=(player.xp*10)+"%";
+  document.getElementById('objective').textContent=gameStage===1?`Objectif: Tuer 10 Champignas (${kills}/10)`:"Objectif: Explorer la rue";
+
+  // TELEPORTATION
+  if(gameStage===1 && kills >= 10){
+    gameStage=2; 
+    player.x=200; 
+    player.y=MAP_HEIGHT-300;
+    kills=0; 
+    enemies.length=0; 
+    shots.length=0; 
+    mushrooms.length=0;
+  }
+}
+
+// --- LOOP ---
+function loop(){
+  const {camX, camY}=drawMap();
+  update();
+  drawPlayer(camX,camY);
+  enemies.forEach(e=>drawEnemy(e,camX,camY));
+  ctx.fillStyle="rgba(0,255,0,.7)";
+  shots.forEach(s=>{
+    const sx=s.x-camX, sy=s.y-camY;
+    ctx.beginPath(); ctx.arc(sx,sy,6,0,Math.PI*2); ctx.fill();
+  });
+  requestAnimationFrame(loop);
+}
+
+// --- JOYSTICKS ---
+function joy(j,cb){
+  const k=j.querySelector(".knob");
+  j.ontouchmove=e=>{
+    let r=j.getBoundingClientRect(),t=e.touches[0];
+    let x=t.clientX-r.left-45, y=t.clientY-r.top-45, d=Math.hypot(x,y);
+    if(d>40){x*=40/d;y*=40/d;}
+    k.style.transform=`translate(${x}px,${y}px)`; cb(x/40,y/40);
+  }
+  j.ontouchend=()=>{k.style.transform="translate(0,0)"; cb(0,0);}
+}
+joy(document.getElementById('move'),(x,y)=>{
+  player.dx=x; player.dy=y;
+  if(Math.abs(x)+Math.abs(y)>0.2){player.dirX=x; player.dirY=y;}
+});
+joy(document.getElementById('attack'),(x,y)=>{
+  if(Math.abs(x)+Math.abs(y)>0.5){player.dirX=x; player.dirY=y; shoot();}
+});
+</script>
+</body>
+</html>
